@@ -1,0 +1,52 @@
+int make_shared(void *va) {
+    int r;
+    u_int perm = (*vpt)[VPN(va)] & 0xfff;
+    if (va >= (void *) UTOP)
+        return -1;
+
+    if ((perm & PTE_V) == 0 || ((*vpd)[PDX(va)] & PTE_V) == 0) {
+        if ((r = syscall_mem_alloc(syscall_getenvid(), ROUNDDOWN(va, BY2PG), PTE_V | PTE_R | PTE_LIBRARY)) < 0)
+            return -1;
+        return ROUNDDOWN((*vpt)[VPN(va)] & 0xfffff000, BY2PG);
+    }
+
+    if ((perm & PTE_R) == 0) {
+        return -1;
+    }
+
+    (*vpt)[VPN(va)] |= PTE_LIBRARY;
+    return ROUNDDOWN((*vpt)[VPN(va)] & 0xfffff000, BY2PG);
+}
+
+请你在 user/fork.c 中实现下面这个用户函数，并在 user/lib.h 中添加相应的声明，使用户程序能
+使用该函数：
+该函数将当前进程中虚拟地址 va 所属的虚拟页标记为共享页，并返回其映射到的物理页的物理地
+址。
+在该进程后续执行 fork 时，其共享页应与子进程共享，使得两个进程的地址空间中该页映射到同
+一个物理页。
+fork 不应对共享页进行 COW 保护。若父进程或子进程修改了共享页中的数据，随后另一进程读取
+该页时也会读取到修改后的数据。
+实现要求
+若当前进程的页表中不存在该虚拟页，该函数应首先分配一页物理内存，并将该虚拟页映射到新分
+配的物理页，使当前进程能够读写该虚拟页。若无法分配新的物理页，该函数应返回 -1 表示失
+败。
+若 va 不在用户空间中（大于或等于 UTOP），或者当前进程的页表中已存在该虚拟页，但进程对
+其没有写入权限，则该函数应返回 -1 表示失败，不产生任何影响。
+除了失败的情况，该函数都应返回 va 所在的虚拟页所映射到的物理页的物理地址。
+若虚拟页 va 已经为共享页，该函数仍应成功，直接返回对应的物理地址。
+评测保证调用 make_shared 之前，虚拟页 va 没有被 COW 保护。
+请注意：
+进程的共享页作为进程的状态，在执行 fork 后创建的子进程中仍应保持。即：若虚拟页 va 是父进
+程中的共享页，则在子进程中 va 仍然是子进程的共享页。若子进程再执行一次 fork，父进程、子
+进程、子进程的子进程都能通过 va 共享同一个物理页。
+作为参数传入 make_shared 的 va 不一定是页对齐的，但返回的物理地址一定是页对齐的。
+git checkout lab4
+git add .
+git commit --allow-empty -m "save my lab4"
+git checkout -b lab4-2-exam
+// user/lib.h
+int make_shared(void *va);
+实现提示
+在用户函数中，你可以读取当前进程的页表，也可以调用已有的 syscall_ 开头的系统调用函
+数，但不能直接调用内核中的函数。
+你可以回顾指导书中 duppage 函数的相关说明，利用其中已实现的机制完成页面共享。
